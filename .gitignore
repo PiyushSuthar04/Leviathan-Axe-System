@@ -1,0 +1,27 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Visual Studio
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln
+
+# Build files
+Build/
+
+# Rider
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+# Unreal generated/project files
+*.slnx
+.vsconfig
+UpgradeLog.htm
