@@ -38,6 +38,9 @@ public:
 
     void FinishRecall();
 
+    void StartRecallAfterDelay();
+    void UpdateAxeShake(float DeltaTime);
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Throw")
     float ThrowSpeed = 2000.0f;
 
@@ -49,12 +52,45 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Throw")
     bool bIsThrown = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Throw")
+    bool bIsStuck = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
     bool bManualRecall = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
     float RecallSpeed = 2500.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
+    float RecallCurveStrength = 150.0f;
+
+    FVector RecallStartLocation;
+    FVector RecallControlPoint;
+    float RecallProgress = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
+    float RecallDelay = 0.4f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
+    float ShakeAngle = 3.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Recall")
+    float ShakeSpeed = 50.0f;
+
+    bool bIsShaking = false;
+
+    FRotator ShakeStartRotation;
+
+    FTimerHandle RecallDelayTimer;
+
+    // Stick Delay
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Stick")
+    float StickDelay = 0.15f;
+
+    FHitResult PendingHitResult;
+
+    FTimerHandle StickDelayTimer;
+
+    void CompleteStickAxe();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Axe|Spin")
     bool bShouldSpin = false;
@@ -64,10 +100,19 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Axe")
     ACharacter* CharacterRef = nullptr;
+    void SetCharacterRecallState(bool bIsRecalling);
 
     UPROPERTY()
     TObjectPtr<USceneComponent> StickPoint = nullptr;
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Axe|Recall")
     void OnAxeEquipped();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Axe|Sound")
+    void OnAxeStuck();
+    UFUNCTION(BlueprintImplementableEvent, Category = "Axe|Sound")
+    void OnRecallSoundStart();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Axe|Sound")
+    void OnAxeImpactSound();
 };

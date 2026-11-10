@@ -40,6 +40,7 @@ void ALeviathanAxe::ThrowAxe(const FVector& InThrowDirection)
     bManualThrow = true;
     bShouldSpin = true;
     bIsThrown = false;
+    bIsStuck = false;
 }
 
 void ALeviathanAxe::UpdateThrowMovement(float DeltaTime)
@@ -88,7 +89,20 @@ void ALeviathanAxe::UpdateThrowMovement(float DeltaTime)
 
     if (bHit)
     {
-        StickAxe(HitResult);
+        bManualThrow = false;
+
+        PendingHitResult = HitResult;
+
+        OnAxeImpactSound();
+
+        GetWorldTimerManager().SetTimer(
+            StickDelayTimer,
+            this,
+            &ALeviathanAxe::CompleteStickAxe,
+            StickDelay,
+            false
+        );
+
         return;
     }
 
@@ -115,7 +129,8 @@ void ALeviathanAxe::StickAxe(const FHitResult& HitResult)
     bManualThrow = false;
     bShouldSpin = false;
     bIsThrown = true;
-
+    bIsStuck = true;
+    
     const bool bIsGround =
         ImpactNormal.Z > 0.7f;
 
@@ -308,13 +323,105 @@ void ALeviathanAxe::RecallAxe()
         return;
     }
 
-    bManualThrow = false;
+    // If axe is stuck, shake first
+    if (bIsStuck)
+    {
+        bManualThrow = false;
+        bManualRecall = false;
+        bShouldSpin = false;
+
+        bIsShaking = true;
+
+        ShakeStartRotation =
+            GetActorRotation();
+
+        GetWorldTimerManager().SetTimer(
+            RecallDelayTimer,
+            this,
+            &ALeviathanAxe::StartRecallAfterDelay,
+            RecallDelay,
+            false
+        );
+
+        return;
+    }
+
+    // If axe is flying in air,
+    // recall immediately
+    if (bManualThrow)
+    {
+        bManualThrow = false;
+
+        StartRecallAfterDelay();
+    }
+}
+void ALeviathanAxe::StartRecallAfterDelay()
+{
+    bIsShaking = false;
+    OnRecallSoundStart();
+
+    // Get current axe position
+    RecallStartLocation =
+        GetActorLocation();
+    RecallProgress = 0.0f;
+
+    USkeletalMeshComponent* CharacterMesh =
+        CharacterRef->GetMesh();
+
+    if (!CharacterMesh)
+    {
+        return;
+    }
+
+    const FVector HandLocation =
+        CharacterMesh->GetSocketLocation(
+            TEXT("AxeSocket")
+        );
+
+    // Direction from axe to hand
+    const FVector ToHand =
+        (HandLocation - RecallStartLocation)
+        .GetSafeNormal();
+
+    // Create a right-side direction
+    const FVector RightDirection =
+        CharacterRef->GetActorRightVector();
+
+    // Control point in the middle of the path
+    const FVector MidPoint =
+        (RecallStartLocation + HandLocation) * 0.5f;
+
+    RecallControlPoint =
+        MidPoint +
+        RightDirection *
+        RecallCurveStrength;
+
+    // Start recall
     bManualRecall = true;
     bShouldSpin = true;
     bIsThrown = true;
 }
-void ALeviathanAxe::UpdateRecallMovement(
-    float DeltaTime)
+void ALeviathanAxe::UpdateAxeShake(float DeltaTime)
+{
+    if (!bIsShaking)
+    {
+        return;
+    }
+
+    const float Time =
+        GetWorld()->GetTimeSeconds();
+
+    const float ShakeAmount =
+        FMath::Sin(Time * ShakeSpeed) * ShakeAngle;
+
+    FRotator NewRotation =
+        ShakeStartRotation;
+
+    NewRotation.Roll += ShakeAmount;
+
+    SetActorRotation(NewRotation);
+}
+void ALeviathanAxe::UpdateRecallMovement(float DeltaTime)
 {
     if (!bManualRecall || !CharacterRef)
     {
@@ -329,43 +436,60 @@ void ALeviathanAxe::UpdateRecallMovement(
         return;
     }
 
-    const FVector AxeSocketLocation =
+    const FVector HandLocation =
         CharacterMesh->GetSocketLocation(
             TEXT("AxeSocket")
         );
 
-    const FVector CurrentLocation =
-        GetActorLocation();
+    const float Distance =
+        FVector::Dist(
+            RecallStartLocation,
+            HandLocation
+        );
 
-    const FVector Direction =
-        (
-            AxeSocketLocation -
-            CurrentLocation
-            ).GetSafeNormal();
+    if (Distance <= 1.0f)
+    {
+        FinishRecall();
+        return;
+    }
 
-    const FVector Movement =
-        Direction *
-        RecallSpeed *
-        DeltaTime;
+    // Move along curve based on speed
+    RecallProgress +=
+        (RecallSpeed * DeltaTime) /
+        Distance;
 
-    const FVector NewLocation =
-        CurrentLocation +
-        Movement;
+    RecallProgress =
+        FMath::Clamp(
+            RecallProgress,
+            0.0f,
+            1.0f
+        );
+
+    const float T =
+        RecallProgress;
+
+    const float OneMinusT =
+        1.0f - T;
+
+    // Quadratic Bezier curve
+    const FVector CurveLocation =
+        (OneMinusT * OneMinusT) *
+        RecallStartLocation
+        +
+        (2.0f * OneMinusT * T) *
+        RecallControlPoint
+        +
+        (T * T) *
+        HandLocation;
 
     SetActorLocation(
-        NewLocation,
+        CurveLocation,
         false,
         nullptr,
         ETeleportType::None
     );
 
-    const float Distance =
-        FVector::Dist(
-            CurrentLocation,
-            AxeSocketLocation
-        );
-
-    if (Distance <= 20.0f)
+    if (RecallProgress >= 1.0f)
     {
         FinishRecall();
     }
@@ -397,6 +521,7 @@ void ALeviathanAxe::FinishRecall()
     bManualThrow = false;
     bShouldSpin = false;
     bIsThrown = false;
+    bIsStuck = false;
 
     OnAxeEquipped();
 }
@@ -427,6 +552,10 @@ void ALeviathanAxe::FindStickPoint()
         }
     }
 }
+void ALeviathanAxe::CompleteStickAxe()
+{
+    StickAxe(PendingHitResult);
+}
 
 void ALeviathanAxe::Tick(float DeltaTime)
 {
@@ -434,5 +563,6 @@ void ALeviathanAxe::Tick(float DeltaTime)
 
     UpdateThrowMovement(DeltaTime);
     UpdateRecallMovement(DeltaTime);
+    UpdateAxeShake(DeltaTime);
     UpdateSpin(DeltaTime);
 }
